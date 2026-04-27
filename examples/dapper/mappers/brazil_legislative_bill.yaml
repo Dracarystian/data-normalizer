@@ -1,0 +1,30 @@
+source: brazil
+schema: legislative_bill
+
+fields:
+  bill_id:
+    from: numero_projeto
+
+  submitted_date:
+    from: data_apresentacao
+    input_format: "DD/MM/YYYY"
+
+  status:
+    from: situacao
+    enum_map:
+      "Em tramitação": in_review
+      "Aprovado":      approved
+      "Rejeitado":     rejected
+      "Rascunho":      draft
+
+  title:
+    from: ementa
+
+  country:
+    value: "BR"
+
+extra_fields:
+  situation:
+    from: situacao_detalhada
+  indexing:
+    from: indexacao

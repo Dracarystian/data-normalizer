@@ -76,3 +76,16 @@ class MapperLoader:
                 raise InvalidMapperError(
                     f"Campo '{field_name}' debe tener 'from' o 'value' en '{path}'"
                 )
+
+        extra_fields = data.get("extra_fields", {})
+        if not isinstance(extra_fields, dict):
+            raise InvalidMapperError(f"'extra_fields' debe ser un diccionario en '{path}'")
+        for field_name, field_def in extra_fields.items():
+            if not isinstance(field_def, dict):
+                raise InvalidMapperError(
+                    f"extra_fields.'{field_name}' debe ser un diccionario en '{path}'"
+                )
+            if "from" not in field_def and "value" not in field_def:
+                raise InvalidMapperError(
+                    f"extra_fields.'{field_name}' debe tener 'from' o 'value' en '{path}'"
+                )

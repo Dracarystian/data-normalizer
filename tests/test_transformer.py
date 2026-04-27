@@ -114,3 +114,48 @@ class TestFixedValue:
         mapper = make_mapper({"country": {"value": "CO"}})
         result = t.apply({"country": "ignored"}, mapper, SCHEMA)
         assert result["country"] == "CO"
+
+
+class TestExtraFields:
+    def test_extra_fields_appear_under_extra_key(self):
+        t = Transformer()
+        mapper = {
+            **MAPPER_BASE,
+            "fields": {"country": {"value": "BR"}},
+            "extra_fields": {
+                "situation": {"from": "situacao_detalhada"},
+                "indexing":  {"from": "indexacao"},
+            },
+        }
+        raw = {"situacao_detalhada": "Em tramitação", "indexacao": "direito constitucional"}
+        result = t.apply(raw, mapper, SCHEMA)
+        assert result["_extra"] == {
+            "situation": "Em tramitação",
+            "indexing":  "direito constitucional",
+        }
+
+    def test_extra_fields_absent_when_not_defined(self):
+        t = Transformer()
+        mapper = make_mapper({"country": {"value": "CO"}})
+        result = t.apply({}, mapper, SCHEMA)
+        assert "_extra" not in result
+
+    def test_extra_field_none_when_source_missing(self):
+        t = Transformer()
+        mapper = {
+            **MAPPER_BASE,
+            "fields": {"country": {"value": "BR"}},
+            "extra_fields": {"situation": {"from": "situacao_detalhada"}},
+        }
+        result = t.apply({}, mapper, SCHEMA)
+        assert result["_extra"]["situation"] is None
+
+    def test_extra_field_fixed_value(self):
+        t = Transformer()
+        mapper = {
+            **MAPPER_BASE,
+            "fields": {"country": {"value": "BR"}},
+            "extra_fields": {"region": {"value": "federal"}},
+        }
+        result = t.apply({}, mapper, SCHEMA)
+        assert result["_extra"]["region"] == "federal"

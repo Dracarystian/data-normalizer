@@ -116,7 +116,21 @@ class Transformer:
                 raw_value, field_type, field_map, canonical_field
             )
 
+        extra_fields = mapper.get("extra_fields", {})
+        if extra_fields:
+            result["_extra"] = self._apply_extra(raw, extra_fields)
+
         return result
+
+    def _apply_extra(self, raw: dict, extra_fields: dict) -> dict:
+        extra = {}
+        for field_name, field_map in extra_fields.items():
+            if "value" in field_map:
+                extra[field_name] = str(field_map["value"]).strip()
+            else:
+                raw_value = raw.get(field_map["from"])
+                extra[field_name] = str(raw_value).strip() if raw_value is not None else None
+        return extra
 
     def _apply_type(self, value: Any, field_type: str, field_map: dict, field: str) -> Any:
         if field_type == "date":
