@@ -1,0 +1,25 @@
+source: colombia
+schema: legislative_bill
+
+fields:
+  bill_id:
+    from: radicado
+
+  submitted_date:
+    from: fecha
+    input_format: "DD/MM/YYYY"
+
+  status:
+    from: estado
+    enum_map:
+      "Segundo debate": in_review
+      "Primer debate":  in_review
+      "Aprobado":       approved
+      "Archivado":      rejected
+      "En trámite":     draft
+
+  title:
+    from: titulo
+
+  country:
+    value: "CO"

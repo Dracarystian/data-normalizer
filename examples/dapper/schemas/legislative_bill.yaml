@@ -1,0 +1,29 @@
+schema: legislative_bill
+version: "1.0"
+
+fields:
+  bill_id:
+    type: string
+    required: true
+
+  submitted_date:
+    type: date
+    format: ISO8601
+    required: true
+
+  status:
+    type: enum
+    required: true
+    values:
+      - draft
+      - in_review
+      - approved
+      - rejected
+
+  title:
+    type: string
+    required: false
+
+  country:
+    type: string
+    required: true

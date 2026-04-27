@@ -1,0 +1,25 @@
+source: mexico
+schema: legislative_bill
+
+fields:
+  bill_id:
+    from: numero_iniciativa
+
+  submitted_date:
+    from: fecha_presentacion
+    input_format: "DD-MM-YYYY"
+
+  status:
+    from: estatus
+    enum_map:
+      "En proceso":   in_review
+      "Dictaminada":  in_review
+      "Aprobada":     approved
+      "Desechada":    rejected
+      "Iniciativa":   draft
+
+  title:
+    from: materia
+
+  country:
+    value: "MX"

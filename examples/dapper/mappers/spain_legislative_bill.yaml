@@ -1,0 +1,24 @@
+source: spain
+schema: legislative_bill
+
+fields:
+  bill_id:
+    from: expediente
+
+  submitted_date:
+    from: fecha_presentacion
+    input_format: "YYYY-MM-DD"
+
+  status:
+    from: estado
+    enum_map:
+      "En tramitación": in_review
+      "Aprobado":       approved
+      "Rechazado":      rejected
+      "Borrador":       draft
+
+  title:
+    from: denominacion
+
+  country:
+    value: "ES"
