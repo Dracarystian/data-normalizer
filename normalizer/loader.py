@@ -11,10 +11,16 @@ from .exceptions import (
 )
 
 VALID_FIELD_TYPES = {"string", "integer", "float", "boolean", "date", "enum"}
+_VALID_EXTENSIONS = {".yaml", ".yml"}
 
 
 def _load_yaml(path: str, not_found_exc, invalid_exc) -> dict[str, Any]:
     p = Path(path)
+    # S3: reject non-YAML extensions to prevent accidentally loading wrong file types.
+    if p.suffix.lower() not in _VALID_EXTENSIONS:
+        raise invalid_exc(
+            f"Extensión de archivo no soportada '{p.suffix}' en '{path}': se esperaba .yaml o .yml"
+        )
     if not p.exists():
         raise not_found_exc(f"Archivo no encontrado: {path}")
     try:

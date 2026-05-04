@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from .exceptions import NormalizationError
@@ -45,5 +46,45 @@ class Validator:
                     raise NormalizationError(
                         field_name,
                         f"Valor enum '{value}' no está en los valores permitidos: {allowed}",
+                        value,
+                    )
+
+            # D6: verify that date strings are actually valid ISO dates (YYYY-MM-DD).
+            # The transformer normalises the format, but a corrupted string can still
+            # reach the validator if a custom mapper produces one.
+            if field_type == "date":
+                try:
+                    datetime.strptime(value, "%Y-%m-%d")
+                except (ValueError, TypeError):
+                    raise NormalizationError(
+                        field_name,
+                        f"Fecha '{value}' no es un ISO8601 válido (YYYY-MM-DD)",
+                        value,
+                    )
+
+            # D5: enforce max_length on string fields.
+            if field_type == "string":
+                max_length = field_def.get("max_length")
+                if max_length is not None and len(value) > max_length:
+                    raise NormalizationError(
+                        field_name,
+                        f"Cadena excede max_length={max_length}: largo actual={len(value)}",
+                        value,
+                    )
+
+            # D4: enforce numeric range constraints.
+            if field_type in ("integer", "float"):
+                min_val = field_def.get("min")
+                max_val = field_def.get("max")
+                if min_val is not None and value < min_val:
+                    raise NormalizationError(
+                        field_name,
+                        f"Valor {value} es menor al mínimo permitido {min_val}",
+                        value,
+                    )
+                if max_val is not None and value > max_val:
+                    raise NormalizationError(
+                        field_name,
+                        f"Valor {value} es mayor al máximo permitido {max_val}",
                         value,
                     )

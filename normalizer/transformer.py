@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Any
 
@@ -70,8 +71,18 @@ def _cast_type(value: Any, field_type: str, field: str) -> Any:
         return None
     try:
         if field_type == "integer":
-            # Handle numbers formatted with dots/commas as thousands separators
-            cleaned = str(value).replace(".", "").replace(",", "")
+            s = str(value).strip()
+            # D1: only remove dots that are thousands separators (dot followed by exactly
+            # 3 digits). A dot in any other position signals a decimal — raise an error
+            # instead of silently truncating (e.g. "1.5" must NOT become 15).
+            cleaned = re.sub(r"\.(?=\d{3}(?:\.|$))", "", s)
+            if "." in cleaned:
+                raise NormalizationError(
+                    field,
+                    f"No se puede convertir '{value}' a integer: contiene decimales",
+                    value,
+                )
+            cleaned = cleaned.replace(",", "")
             return int(cleaned)
         if field_type == "float":
             cleaned = str(value).replace(",", ".")
@@ -111,6 +122,12 @@ class Transformer:
 
             source_key = field_map["from"]
             raw_value = raw.get(source_key)
+
+            # D2: treat configured sentinel strings as None before type casting.
+            null_values = schema_def.get("null_values", [])
+            if null_values and raw_value is not None:
+                if str(raw_value).strip() in null_values:
+                    raw_value = None
 
             result[canonical_field] = self._apply_type(
                 raw_value, field_type, field_map, canonical_field

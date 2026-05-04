@@ -116,6 +116,73 @@ class TestFixedValue:
         assert result["country"] == "CO"
 
 
+class TestIntegerDecimalRejection:
+    def test_float_string_raises(self):
+        # D1: "1.5" must not silently become 15
+        t = Transformer()
+        mapper = make_mapper({"amount": {"from": "valor"}})
+        with pytest.raises(NormalizationError) as exc_info:
+            t.apply({"valor": "1.5"}, mapper, SCHEMA)
+        assert exc_info.value.field == "amount"
+
+    def test_european_thousands_still_works(self):
+        # "50.000" is a valid European thousands-formatted integer
+        t = Transformer()
+        mapper = make_mapper({"amount": {"from": "valor"}})
+        result = t.apply({"valor": "50.000"}, mapper, SCHEMA)
+        assert result["amount"] == 50000
+
+    def test_multi_group_thousands(self):
+        t = Transformer()
+        mapper = make_mapper({"amount": {"from": "valor"}})
+        result = t.apply({"valor": "1.500.000"}, mapper, SCHEMA)
+        assert result["amount"] == 1500000
+
+
+class TestNullSentinels:
+    SCHEMA_WITH_SENTINELS = {
+        "schema": "test",
+        "version": "1.0",
+        "fields": {
+            "label": {"type": "string", "null_values": ["N/A", "-", "null", ""]},
+            "amount": {"type": "integer", "null_values": ["N/A"]},
+            "country": {"type": "string"},
+        },
+    }
+
+    def test_sentinel_becomes_none(self):
+        # D2: configured sentinel strings must be treated as None
+        t = Transformer()
+        mapper = {
+            "source": "test",
+            "schema": "test",
+            "fields": {"label": {"from": "etiqueta"}, "country": {"value": "CO"}},
+        }
+        for sentinel in ("N/A", "-", "null", ""):
+            result = t.apply({"etiqueta": sentinel}, mapper, self.SCHEMA_WITH_SENTINELS)
+            assert result["label"] is None, f"Expected None for sentinel '{sentinel}'"
+
+    def test_non_sentinel_passes_through(self):
+        t = Transformer()
+        mapper = {
+            "source": "test",
+            "schema": "test",
+            "fields": {"label": {"from": "etiqueta"}, "country": {"value": "CO"}},
+        }
+        result = t.apply({"etiqueta": "activo"}, mapper, self.SCHEMA_WITH_SENTINELS)
+        assert result["label"] == "activo"
+
+    def test_sentinel_on_numeric_field(self):
+        t = Transformer()
+        mapper = {
+            "source": "test",
+            "schema": "test",
+            "fields": {"amount": {"from": "valor"}, "country": {"value": "CO"}},
+        }
+        result = t.apply({"valor": "N/A"}, mapper, self.SCHEMA_WITH_SENTINELS)
+        assert result["amount"] is None
+
+
 class TestExtraFields:
     def test_extra_fields_appear_under_extra_key(self):
         t = Transformer()
