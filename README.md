@@ -2,6 +2,23 @@
 
 Domain-agnostic normalization library for heterogeneous data sources. Translates raw records from multiple origins (APIs, scrapers, CSV, RSS) into a validated canonical structure using YAML-defined schemas and mappers.
 
+## The problem it solves
+
+Every data pipeline that aggregates from more than one source hits the same wall: the same concept arrives with a different name, format, and vocabulary depending on who published it.
+
+**Product catalog aggregation** is the canonical example. Pull inventory from three marketplaces and you get:
+
+| Concept        | Amazon                 | Mercado Libre        | Shopify              |
+|----------------|------------------------|----------------------|----------------------|
+| Product ID     | `ASIN`                 | `id`                 | `product_id`         |
+| Price          | `price.amount`         | `precio`             | `variants[0].price`  |
+| Stock status   | `"In Stock"`           | `"Disponible"`       | `"active"`           |
+| Published date | `2024-03-15T00:00:00Z` | `15/03/2024`         | `1710460800` (epoch) |
+
+Before you can join, compare, or store any of this you have to write translation logic — and that logic tends to spread across ingestion scripts, dbt models, and API wrappers until nobody owns it. `data-normalizer` centralises that translation in versioned, testable YAML files.
+
+Other datasets with the same problem: financial transactions across payment gateways (Stripe / PayPal / Mercado Pago), job listings across boards (LinkedIn / Indeed / Glassdoor), real-estate listings across portals, IoT telemetry from different device manufacturers.
+
 ## Installation
 
 ```bash
@@ -15,8 +32,8 @@ from normalizer import Normalizer
 from normalizer.exceptions import NormalizationError
 
 n = Normalizer(
-    schema="./schemas/legislative_bill.yaml",
-    mapper="./mappers/colombia_legislative_bill.yaml",
+    schema="./schemas/product.yaml",
+    mapper="./mappers/mercadolibre_product.yaml",
 )
 
 try:
@@ -29,43 +46,58 @@ The returned dict always contains a `_meta` key:
 
 ```python
 {
-    "bill_id": "PL-123-2026",
-    "submitted_date": "2026-03-15",
-    "status": "in_review",
-    "country": "CO",
+    "product_id": "MLA-987654321",
+    "title": "Laptop Dell XPS 13",
+    "price": 1299.99,
+    "currency": "USD",
+    "stock_status": "available",
+    "listed_at": "2024-03-15",
+    "marketplace": "mercadolibre",
     "_meta": {
         "normalizer_version": "1.0.0",
         "normalized_at": "2026-04-27T10:00:00Z",
-        "source": "colombia",
-        "schema": "legislative_bill"
+        "source": "mercadolibre",
+        "schema": "product"
     }
 }
 ```
 
 ## Schema YAML
 
-Defines the canonical structure expected in the output.
+Defines the canonical structure expected in the output. Write it once; every source maps into it.
 
 ```yaml
-schema: legislative_bill
+schema: product
 version: "1.0"
 
 fields:
-  bill_id:
+  product_id:
     type: string
     required: true
 
-  submitted_date:
-    type: date
-    format: ISO8601
+  title:
+    type: string
     required: true
 
-  status:
+  price:
+    type: float
+    required: true
+
+  currency:
+    type: string
+    required: true
+
+  stock_status:
     type: enum
     required: true
-    values: [draft, in_review, approved, rejected]
+    values: [available, out_of_stock, discontinued]
 
-  country:
+  listed_at:
+    type: date
+    format: ISO8601
+    required: false
+
+  marketplace:
     type: string
     required: true
 ```
@@ -74,29 +106,108 @@ Supported types: `string`, `integer`, `float`, `boolean`, `date`, `enum`.
 
 ## Mapper YAML
 
-Defines how to translate a specific source into the canonical schema.
+Defines how to translate a specific source into the canonical schema. One mapper per source; the schema never changes.
+
+**Mercado Libre:**
 
 ```yaml
-source: colombia
-schema: legislative_bill
+source: mercadolibre
+schema: product
 
 fields:
-  bill_id:
-    from: radicado           # source field name
+  product_id:
+    from: id                    # source field name
 
-  submitted_date:
-    from: fecha
-    input_format: "DD/MM/YYYY"   # or ISO8601
+  title:
+    from: titulo
 
-  status:
-    from: estado
-    enum_map:                # translate source values to canonical enum values
-      "Segundo debate": in_review
-      "Aprobado":       approved
-      "Archivado":      rejected
+  price:
+    from: precio
 
-  country:
-    value: "CO"              # fixed value — does not come from source record
+  currency:
+    from: moneda
+
+  stock_status:
+    from: disponibilidad
+    enum_map:                   # translate source values to canonical enum values
+      "Disponible":   available
+      "Sin stock":    out_of_stock
+      "Descontinuado": discontinued
+
+  listed_at:
+    from: fecha_publicacion
+    input_format: "DD/MM/YYYY"
+
+  marketplace:
+    value: "mercadolibre"       # fixed value — does not come from source record
+```
+
+**Amazon:**
+
+```yaml
+source: amazon
+schema: product
+
+fields:
+  product_id:
+    from: ASIN
+
+  title:
+    from: title
+
+  price:
+    from: price.amount
+
+  currency:
+    from: price.currency
+
+  stock_status:
+    from: availability
+    enum_map:
+      "In Stock":           available
+      "Out of Stock":       out_of_stock
+      "Discontinued":       discontinued
+
+  listed_at:
+    from: date_first_available
+    input_format: ISO8601
+
+  marketplace:
+    value: "amazon"
+```
+
+**Shopify:**
+
+```yaml
+source: shopify
+schema: product
+
+fields:
+  product_id:
+    from: product_id
+
+  title:
+    from: title
+
+  price:
+    from: variants[0].price
+
+  currency:
+    from: currency_code
+
+  stock_status:
+    from: status
+    enum_map:
+      "active":   available
+      "draft":    out_of_stock
+      "archived": discontinued
+
+  listed_at:
+    from: published_at
+    input_format: ISO8601
+
+  marketplace:
+    value: "shopify"
 ```
 
 ## Error Handling
@@ -113,22 +224,34 @@ Other exceptions: `SchemaNotFoundError`, `MapperNotFoundError`, `InvalidSchemaEr
 
 ## Custom Python Mappers
 
-When YAML rules are not enough, subclass `BaseMapper` in your own project:
+When YAML rules are not enough (nested structures, computed fields, conditional logic), subclass `BaseMapper` in your own project:
 
 ```python
 from normalizer.mappers import BaseMapper
 
-class MyComplexMapper(BaseMapper):
+class ShopifyMapper(BaseMapper):
     def map(self, raw: dict) -> dict:
+        # Shopify nests price inside variants; grab the lowest active variant
+        active_variants = [v for v in raw.get("variants", []) if v["inventory_policy"] != "deny"]
+        price = min(float(v["price"]) for v in active_variants) if active_variants else None
+
         return {
-            "bill_id": self._extract_id(raw),
-            ...
+            "product_id": str(raw["product_id"]),
+            "title": raw["title"],
+            "price": price,
+            "currency": raw.get("currency_code", "USD"),
+            "stock_status": self._map_status(raw["status"]),
+            "listed_at": raw.get("published_at", "")[:10],
+            "marketplace": "shopify",
         }
+
+    def _map_status(self, status: str) -> str:
+        return {"active": "available", "draft": "out_of_stock", "archived": "discontinued"}.get(status, "out_of_stock")
 ```
 
 ## Examples
 
-See [examples/dapper/](examples/dapper/) for a complete legislative bills use case with schemas and mappers for Colombia, Spain, and Mexico.
+See [examples/dapper/](examples/dapper/) for a complete product catalog use case with schemas and mappers for Mercado Libre, Amazon, and Shopify.
 
 ## Development
 
